@@ -38,19 +38,34 @@ def handle_disconnect():
     print(f"[ML Server] User {user_id} disconnected")
 
 
+import threading
+import time
+
+# Set to track users currently in processing to skip frames and avoid lag
+processing_users = set()
+processing_lock = threading.Lock()
+
 @socketio.on('frame')
 def handle_frame(data):
     """
     Handle 'frame' event from frontend.
     Payload: { roomId, userId, userName, frame (Base64 JPEG), timestamp }
     """
-    print(">>> FRAME RECEIVED <<<", flush=True)
     from app.preprocessing.frame_extractor import decode_base64_frame, FrameExtractionError
     from app.core.predictor import predict
 
+    user_id = data.get('userId')
+    
+    # Congestion Control: Skip frame if already processing for this user
+    with processing_lock:
+        if user_id in processing_users:
+            # print(f"[Server] Skipping frame for {user_id} (Busy)")
+            return
+        processing_users.add(user_id)
+
+    start_perf = time.time()
     try:
         room_id = data.get('roomId')
-        user_id = data.get('userId')
         user_name = data.get('userName')
         base64_frame = data.get('frame')
         timestamp = data.get('timestamp')
@@ -80,7 +95,17 @@ def handle_frame(data):
             'timestamp': original_timestamp
         }, room=room_id)
 
+        duration = (time.time() - start_perf) * 1000
+        if text:
+            print(f"[Performance] User {user_name}: Predicted '{text}' (conf={confidence:.2f}) in {duration:.0f}ms")
+        else:
+            if duration > 100: # Only log slow "No hand" detections
+                print(f"[Performance] User {user_name}: No detection in {duration:.0f}ms")
+
     except FrameExtractionError as e:
         print(f"[ML Server] Frame decode error for {user_id}: {e}")
     except Exception as e:
         print(f"[ML Server] Inference error for {user_id}: {e}")
+    finally:
+        with processing_lock:
+            processing_users.discard(user_id)

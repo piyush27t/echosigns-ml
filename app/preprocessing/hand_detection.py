@@ -27,9 +27,9 @@ def create_detector():
         options = vision.HandLandmarkerOptions(
             base_options=base_options, 
             num_hands=1,
-            min_hand_detection_confidence=0.35,  
-            min_hand_presence_confidence=0.35,   
-            min_tracking_confidence=0.35         
+            min_hand_detection_confidence=0.3,  
+            min_hand_presence_confidence=0.3,   
+            min_tracking_confidence=0.3         
         )
         detector = vision.HandLandmarker.create_from_options(options)
         print(f"[MediaPipe] GPU delegate initialized in {time.time() - start_time:.2f}s", flush=True)
@@ -44,9 +44,9 @@ def create_detector():
         options = vision.HandLandmarkerOptions(
             base_options=base_options, 
             num_hands=2,
-            min_hand_detection_confidence=0.35,  
-            min_hand_presence_confidence=0.35,   
-            min_tracking_confidence=0.35         
+            min_hand_detection_confidence=0.3,  
+            min_hand_presence_confidence=0.3,   
+            min_tracking_confidence=0.3         
         )
         detector = vision.HandLandmarker.create_from_options(options)
         print(f"[MediaPipe] CPU fallback initialized in {time.time() - cpu_start:.2f}s", flush=True)
@@ -61,10 +61,15 @@ SEQUENCE_LENGTH    = 30 # Increased for better stability
 def extract_landmarks(frame: np.ndarray) -> Optional[np.ndarray]:
     """
     Run MediaPipe Tasks on a BGR frame and return 42 features for the first hand.
-    
-    Structure:
-    - [0:42]: Hand landmarks (21 x 2 coords)
+    Resize frame if too large to speed up processing.
     """
+    # Performance Optimization: Downscale if image is high-res
+    h, w = frame.shape[:2]
+    max_w = 480
+    if w > max_w:
+        scale = max_w / float(w)
+        frame = cv2.resize(frame, (max_w, int(h * scale)), interpolation=cv2.INTER_AREA)
+
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     
@@ -72,21 +77,18 @@ def extract_landmarks(frame: np.ndarray) -> Optional[np.ndarray]:
     if not detection_result.hand_landmarks:
         return None
 
-    # [LOG] Show how many hands were found
-    # print(f"[MediaPipe] Found {len(detection_result.hand_landmarks)} hand(s)", flush=True)
-
     # Reverting to single-hand: Just take the first one
     landmarks = detection_result.hand_landmarks[0]
     
     # Normalize relative to the hand's center for geometric invariance
-    max_x = max([lm.x for lm in landmarks])
-    min_x = min([lm.x for lm in landmarks])
-    max_y = max([lm.y for lm in landmarks])
-    min_y = min([lm.y for lm in landmarks])
+    max_lm_x = max([lm.x for lm in landmarks])
+    min_lm_x = min([lm.x for lm in landmarks])
+    max_lm_y = max([lm.y for lm in landmarks])
+    min_lm_y = min([lm.y for lm in landmarks])
     
-    mid_x = (max_x + min_x) / 2
-    mid_y = (max_y + min_y) / 2
-    scale = max(max_x - min_x, max_y - min_y, 1e-6)
+    mid_x = (max_lm_x + min_lm_x) / 2
+    mid_y = (max_lm_y + min_lm_y) / 2
+    scale = max(max_lm_x - min_lm_x, max_lm_y - min_lm_y, 1e-6)
 
     h_coords = np.array([[(lm.x - mid_x)/scale, (lm.y - mid_y)/scale] for lm in landmarks], dtype=np.float32).flatten()
     
