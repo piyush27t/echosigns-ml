@@ -56,7 +56,7 @@ def load_models():
         raise FileNotFoundError(f"LSTM model not found at {LSTM_MODEL_PATH}")
 
     print("[ML] Loading LSTM model...")
-    lstm_model = tf.keras.models.load_model(LSTM_MODEL_PATH)
+    lstm_model = tf.keras.models.load_model(LSTM_MODEL_PATH, compile=False)
     print(f"[ML] LSTM input shape: {lstm_model.input_shape}")
 
     _load_labels()

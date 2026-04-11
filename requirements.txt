@@ -3,7 +3,7 @@ flask-socketio
 eventlet
 opencv-python
 numpy
-tensorflow>=2.18.0
+tensorflow==2.21.0
 pydantic
 python-dotenv
 mediapipe>=0.10.15
