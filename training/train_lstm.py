@@ -111,18 +111,14 @@ print(f"[Train] Train={len(X_train)}  Val={len(X_val)}  Test={len(X_test)}")
 # ------------------------------------------------------------------ #
 model = Sequential([
     BatchNormalization(input_shape=(SEQUENCE_LENGTH, FEATURE_DIM)),
-    LSTM(128, return_sequences=True,
+    LSTM(64, return_sequences=True,
          kernel_regularizer=L2(L2_REG), recurrent_regularizer=L2(L2_REG)),
     BatchNormalization(),
-    Dropout(0.4),
-    LSTM(128, return_sequences=True,
-         kernel_regularizer=L2(L2_REG), recurrent_regularizer=L2(L2_REG)),
-    BatchNormalization(),
-    Dropout(0.4),
+    Dropout(0.5),
     LSTM(64, return_sequences=False,
          kernel_regularizer=L2(L2_REG), recurrent_regularizer=L2(L2_REG)),
     BatchNormalization(),
-    Dropout(0.4),
+    Dropout(0.5),
     Dense(64, activation="relu", kernel_regularizer=L2(L2_REG)),
     Dense(NUM_CLASSES, activation="softmax")
 ])
