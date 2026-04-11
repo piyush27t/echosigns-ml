@@ -12,8 +12,8 @@ from app.preprocessing.hand_detection import extract_landmarks, FEATURES_PER_FRA
 # CONFIG — aligned with alphabet finger-spelling requirements         #
 # ------------------------------------------------------------------ #
 SEQUENCE_LENGTH      = 30    # Target sequence length
-CONFIDENCE_THRESHOLD = 0.75  # Set to 0.75 for stricter validation
-SMOOTHING_WINDOW     = 5     # Req 5+ frames of consistency
+CONFIDENCE_THRESHOLD = 0.65  # Relaxed from 0.75 for better responsiveness
+SMOOTHING_WINDOW     = 4     # Relaxed from 5 to reduce latency
 
 # Session manager — buffers 30 landmark vectors per user
 session_manager = SessionManager(sequence_length=SEQUENCE_LENGTH)
@@ -89,19 +89,18 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
         
         # If we have no active caption, just return empty string immediately
         if last_time == 0:
-            return "", 0.0, True, timestamp
+            return "", 0.0, False, timestamp
             
         # Timeout after 3.0s of no stable sign to clear the sentence
         if time.time() - last_time > 3.0:
-            if user_id in _last_stable_time:
-                print(f"[UI] Clearing SENTENCE for {user_id}", flush=True)
+            print(f"[UI] Clearing SENTENCE for {user_id}", flush=True)
             _last_stable_time.pop(user_id, None)
             _user_sentences.pop(user_id, None)
             _currently_stable_sign.pop(user_id, None)
             return "", 0.0, True, timestamp # True to ensure UI actually clears
             
-        current_sentence = " ".join(_user_sentences.get(user_id, []))
-        return current_sentence, 0.0, True, timestamp
+        current_sentence = "".join(_user_sentences.get(user_id, []))
+        return current_sentence, 0.0, False, timestamp
 
     # 1. Extract landmarks (42 features)
     landmarks = extract_landmarks(frame)
@@ -119,7 +118,6 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
             _last_seen_hand[user_id] = time.time()
 
     # 2. Add Motion Reset: if hand jumps, wipe the old buffer
-    # Landmarks are flattened (x,y), so we reshape to (21, 2)
     lm_arr = landmarks.reshape(-1, 2)
     cx, cy = np.mean(lm_arr[:, 0]), np.mean(lm_arr[:, 1])
     
@@ -129,30 +127,27 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
         if dist > 0.20: # 20% screen movement
             session_manager.clear_user_session(user_id)
             smoother.clear()
+            _currently_stable_sign.pop(user_id, None) # Allow same sign again if moved significantly
 
     _last_hand_center[user_id] = (cx, cy)
 
-    # 3. Add to per-user frame buffer (SessionManager now handles smoothing)
+    # 3. Add to per-user frame buffer
     ready = session_manager.add_user_feature(user_id, landmarks)
     
     if not ready:
         return get_current_ui_state()
 
     # 4. LSTM inference — input shape: (1, 30, 42)
-    sequence    = session_manager.get_user_sequence(user_id)
+    sequence = session_manager.get_user_sequence(user_id)
     
-    # [DUAL INFERENCE] Check normal and mirrored versions to handle webcam flips
     def mirror_sequence(seq):
-        """Flip x-coordinates for single hand."""
         flipped = seq.copy()
-        # Negate relative x-coordinates within the hand buffer
         flipped[:, :, 0:42:2] = -flipped[:, :, 0:42:2]
         return flipped
 
     out_orig = lstm.predict(sequence, verbose=0)
     out_mirr = lstm.predict(mirror_sequence(sequence), verbose=0)
     
-    # Pick the one with the higher maximum confidence
     conf_orig = np.max(out_orig)
     conf_mirr = np.max(out_mirr)
     lstm_output = out_mirr if conf_mirr > conf_orig else out_orig
@@ -165,16 +160,32 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
     # [DIAGNOSTIC] Log Top 5 predictions
     top_indices = np.argsort(lstm_output[0])[-5:][::-1]
     top_parts = [f"{labels.get(int(idx), '???')}:{lstm_output[0][idx]:.2f}" for idx in top_indices]
-    
-    print(f"[Predict] {text} ({confidence:.2f}) | Top-5: {', '.join(top_parts)}", flush=True)
+    print(f"[Predict] {user_id}: {text} ({confidence:.2f}) | Top-5: {', '.join(top_parts)}", flush=True)
 
     # 6. Temporal smoothing
     smoother.append(text)
-    
-    # STABILITY THRESHOLDS
     is_stable = confidence >= CONFIDENCE_THRESHOLD and _is_stable(smoother, text, SMOOTHING_WINDOW)
 
+    # 7. Sentence building logic
     if is_stable:
-        return text, confidence, True, timestamp
+        # Check if this is a NEW stable sign
+        last_sign = _currently_stable_sign.get(user_id)
+        if text != last_sign:
+            # Special case for "a" (as requested previously)
+            sign_to_add = "Hi Welcome to Echosigns" if text.lower() == "a" else text
+            
+            if user_id not in _user_sentences:
+                _user_sentences[user_id] = []
+            
+            _user_sentences[user_id].append(sign_to_add)
+            _currently_stable_sign[user_id] = text
+            print(f"[Sentence] User {user_id} added '{sign_to_add}'", flush=True)
+
+        _last_stable_time[user_id] = time.time()
+        
+        current_sentence = "".join(_user_sentences.get(user_id, []))
+        return current_sentence, confidence, True, timestamp
     else:
-        return "", 0.0, False, timestamp
+        # Not stable yet, but we have a hand. Show the existing sentence.
+        return get_current_ui_state()
+
