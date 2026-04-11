@@ -164,9 +164,13 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
 
     # 6. Temporal smoothing
     smoother.append(text)
-    is_stable = confidence >= CONFIDENCE_THRESHOLD and _is_stable(smoother, text, SMOOTHING_WINDOW)
+    
+    # STABILITY THRESHOLDS — 0.5 for adding to sentence, but 0.35 for showing "anyhow"
+    is_stable = confidence >= 0.5 and _is_stable(smoother, text, 3) 
 
-    # 7. Sentence building logic
+    # 7. Sentence building / "Anyhow" display logic
+    current_sentence = "".join(_user_sentences.get(user_id, []))
+    
     if is_stable:
         # Check if this is a NEW stable sign
         last_sign = _currently_stable_sign.get(user_id)
@@ -183,9 +187,17 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
 
         _last_stable_time[user_id] = time.time()
         
+        # After adding, update the current sentence
         current_sentence = "".join(_user_sentences.get(user_id, []))
         return current_sentence, confidence, True, timestamp
     else:
-        # Not stable yet, but we have a hand. Show the existing sentence.
+        # Not fully stable yet, but "display anyhow" if we have a decent guess
+        if confidence > 0.35:
+            # Show the sentence so far + the current transient guess in brackets
+            transient_display = f"{current_sentence} [{text}]" if current_sentence else f"[{text}]"
+            return transient_display, confidence, False, timestamp
+            
+        # If no decent guess, just show the stable sentence
         return get_current_ui_state()
+
 
