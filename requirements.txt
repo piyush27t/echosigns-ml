@@ -1,0 +1,12 @@
+flask
+flask-socketio
+eventlet
+opencv-python
+numpy
+tensorflow>=2.18.0
+pydantic
+python-dotenv
+mediapipe>=0.10.15
+scikit-learn
+matplotlib
+tqdm
