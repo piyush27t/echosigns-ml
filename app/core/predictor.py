@@ -11,11 +11,11 @@ from app.preprocessing.hand_detection import extract_landmarks, FEATURES_PER_FRA
 # ------------------------------------------------------------------ #
 # CONFIG — aligned with alphabet finger-spelling requirements         #
 # ------------------------------------------------------------------ #
-SEQUENCE_LENGTH      = 30    # Target sequence length
+SEQUENCE_LENGTH      = 20    # Targeted reduction for lower latency
 CONFIDENCE_THRESHOLD = 0.65  # Relaxed from 0.75 for better responsiveness
 SMOOTHING_WINDOW     = 4     # Relaxed from 5 to reduce latency
 
-# Session manager — buffers 30 landmark vectors per user
+# Session manager — buffers 20 landmark vectors per user
 session_manager = SessionManager(sequence_length=SEQUENCE_LENGTH)
 
 # Dictionary to store temporal smoothing history for each user
@@ -68,14 +68,14 @@ def _decode_prediction(output: np.ndarray, labels: dict) -> Tuple[str, float]:
 # ------------------------------------------------------------------ #
 def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, float, bool, float]:
     """
-    MediaPipe → Landmark extraction → LSTM inference → Temporal smoothing.
+    MediaPipe → Landmark extraction → GRU inference → Temporal smoothing.
 
     Pipeline (per frame):
       1. MediaPipe extracts 21 hand landmarks → 42 float features
       2. Check hand motion to auto-reset sequences
-      3. Features buffered in SessionManager (30-frame window)
-      4. When window full → LSTM predicts label + confidence
-      5. Temporal smoother checks consistency (5+ frames)
+      3. Features buffered in SessionManager (20-frame window)
+      4. When window full → Model predicts label + confidence
+      5. Temporal smoother checks consistency (3+ frames)
       6. Emit stable prediction with label and confidence
     """
     models   = get_models()
@@ -137,20 +137,11 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
     if not ready:
         return get_current_ui_state()
 
-    # 4. LSTM inference — input shape: (1, 30, 42)
+    # 4. Model inference — input shape: (1, 20, 42)
     sequence = session_manager.get_user_sequence(user_id)
     
-    def mirror_sequence(seq):
-        flipped = seq.copy()
-        flipped[:, :, 0:42:2] = -flipped[:, :, 0:42:2]
-        return flipped
-
-    out_orig = lstm.predict(sequence, verbose=0)
-    out_mirr = lstm.predict(mirror_sequence(sequence), verbose=0)
-    
-    conf_orig = np.max(out_orig)
-    conf_mirr = np.max(out_mirr)
-    lstm_output = out_mirr if conf_mirr > conf_orig else out_orig
+    # Run inference ONCE (Model handles mirror training)
+    lstm_output = lstm.predict(sequence, verbose=0)
 
     # 5. Result Extraction
     class_id = int(np.argmax(lstm_output[0]))
@@ -161,6 +152,7 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
     top_indices = np.argsort(lstm_output[0])[-5:][::-1]
     top_parts = [f"{labels.get(int(idx), '???')}:{lstm_output[0][idx]:.2f}" for idx in top_indices]
     print(f"[Predict] {user_id}: {text} ({confidence:.2f}) | Top-5: {', '.join(top_parts)}", flush=True)
+
 
     # 6. Temporal smoothing
     smoother.append(text)

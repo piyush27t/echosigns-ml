@@ -65,7 +65,7 @@ detector = create_detector()
 
 NUM_LANDMARKS      = 21
 FEATURES_PER_FRAME = 42 # 21 landmarks * 2 coords (x, y) = 42
-SEQUENCE_LENGTH    = 30 # Increased for better stability
+SEQUENCE_LENGTH    = 20 # Optimized for speed vs accuracy balance
 
 def extract_landmarks(frame: np.ndarray) -> Optional[np.ndarray]:
     """

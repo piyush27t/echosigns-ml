@@ -24,7 +24,7 @@ WLASL_JSON_PATH = os.path.join(BASE_DIR, "dataset/archive/wlasl-complete/WLASL_v
 VIDEOS_DIR = os.path.join(BASE_DIR, "dataset/archive/wlasl-complete/videos")
 MODELS_DIR = os.path.join(BASE_DIR, "../app/models")
 
-def extract_sliding_windows(sequence, window_size=SEQUENCE_LENGTH, step=5):
+def extract_sliding_windows(sequence, window_size=SEQUENCE_LENGTH, step=4):
     """Generate multiple overlapping windows from a sequence."""
     seq_len = len(sequence)
     if seq_len < window_size:
