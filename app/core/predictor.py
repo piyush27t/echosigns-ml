@@ -102,7 +102,7 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
       6. Emit stable prediction with label and confidence
     """
     models   = get_models()
-    tflite   = models["tflite"]
+    lstm     = models["lstm"]
     labels   = models["labels"]
     smoother = _get_smoother(user_id)
 
@@ -163,23 +163,8 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
     # 4. Model inference — input shape: (1, 20, 42)
     sequence = session_manager.get_user_sequence(user_id)
     
-    # Run inference using TFLite (more efficient than Keras)
-    # Get input tensor index
-    input_details = tflite.get_input_details()
-    output_details = tflite.get_output_details()
-    
-    # Prepare input: ensure float32 dtype
-    input_data = sequence.astype(np.float32)
-    
-    # Set input tensor
-    tflite.set_tensor(input_details[0]['index'], input_data)
-    
-    # Run inference
-    tflite.invoke()
-    
-    # Get output
-    tflite_output = tflite.get_tensor(output_details[0]['index'])
-    lstm_output = np.array([tflite_output[0]])  # Wrap to match expected shape
+    # Run inference using Keras model
+    lstm_output = lstm.predict(sequence, verbose=0)
 
     # 5. Result Extraction
     class_id = int(np.argmax(lstm_output[0]))
