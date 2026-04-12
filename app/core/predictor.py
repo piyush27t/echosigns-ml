@@ -63,6 +63,29 @@ def _decode_prediction(output: np.ndarray, labels: dict) -> Tuple[str, float]:
     return text, confidence
 
 
+def reset_user_prediction_state(user_id: str):
+    """
+    Clear all prediction state for a user.
+    Called when frontend sends reset_prediction_state event.
+    This forces fresh detection from new frames onwards.
+    """
+    # Clear frame buffer
+    session_manager.clear_user_session(user_id)
+    
+    # Clear temporal smoothing history
+    if user_id in _smoothers:
+        _smoothers[user_id].clear()
+    
+    # Clear cached state
+    _last_stable_time.pop(user_id, None)
+    _user_sentences.pop(user_id, None)
+    _currently_stable_sign.pop(user_id, None)
+    _last_hand_center.pop(user_id, None)
+    _last_seen_hand.pop(user_id, None)
+    
+    print(f"[Reset] Cleared all prediction state for user {user_id}", flush=True)
+
+
 # ------------------------------------------------------------------ #
 # Main inference pipeline                                             #
 # ------------------------------------------------------------------ #

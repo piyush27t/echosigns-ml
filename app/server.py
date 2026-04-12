@@ -38,6 +38,31 @@ def handle_disconnect():
     print(f"[ML Server] User {user_id} disconnected")
 
 
+@socketio.on('reset_prediction_state')
+def handle_reset_prediction_state(data):
+    """
+    Handle reset_prediction_state event from frontend.
+    Clears all cached frames and model state for the user.
+    Forces fresh detection from new frames onwards.
+    Payload: { userId }
+    """
+    from app.core.predictor import reset_user_prediction_state
+    
+    user_id = data.get('userId')
+    if not user_id:
+        print("[ML Server] Reset request missing userId")
+        return
+    
+    print(f"[ML Server] Reset prediction state for user {user_id}")
+    reset_user_prediction_state(user_id)
+    
+    # Optionally emit acknowledgment back to frontend
+    emit('reset_prediction_state_ack', {
+        'userId': user_id,
+        'status': 'success'
+    })
+
+
 import threading
 import time
 
