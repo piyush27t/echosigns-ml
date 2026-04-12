@@ -13,7 +13,7 @@ label_map: Dict[int, str] = {}
 
 BASE_DIR       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR     = os.path.join(BASE_DIR, "models")
-LSTM_MODEL_PATH = os.path.join(MODELS_DIR, "lstm_model", "lstm_model.h5")
+LSTM_MODEL_PATH = os.path.join(MODELS_DIR, "lstm_model", "lstm_model.keras")
 LABELS_PATH    = os.path.join(MODELS_DIR, "labels.json")
 
 

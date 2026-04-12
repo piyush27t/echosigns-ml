@@ -44,7 +44,7 @@ EPOCHS          = 150
 BATCH_SIZE      = 32    # Smaller batch for better generalization
 NOISE_STD       = 0.015  # Increased jitter
 L2_REG          = 0.001  # Increased regularization
-SAVE_DIR        = "app/models/lstm_model"
+SAVE_DIR        = "app/models/lstm_model" 
 
 # ------------------------------------------------------------------ #
 # Load landmark sequences                                              #
@@ -158,7 +158,7 @@ model.summary()
 # ------------------------------------------------------------------ #
 callbacks = [
     EarlyStopping(patience=20, restore_best_weights=True, verbose=1),
-    ModelCheckpoint(SAVE_DIR + "_best.h5", save_best_only=True, verbose=1),
+    ModelCheckpoint(SAVE_DIR + "_best.keras", save_best_only=True, verbose=1),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=7, min_lr=1e-6, verbose=1)
 ]
 
@@ -179,7 +179,8 @@ history = model.fit(
 # Save and Convert to TFLite (for Performance)                        #
 # ------------------------------------------------------------------ #
 os.makedirs(SAVE_DIR, exist_ok=True)
-model.save(os.path.join(SAVE_DIR, "lstm_model.h5"))
+model.save(os.path.join(SAVE_DIR, "lstm_model.keras"))
+
 
 print("[Train] Converting to TFLite...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
