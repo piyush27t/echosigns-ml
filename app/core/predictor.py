@@ -202,9 +202,10 @@ def predict(user_id: str, frame: np.ndarray, timestamp: float) -> Tuple[str, flo
 
         _last_stable_time[user_id] = time.time()
         
-        # After adding, update the current sentence
-        current_sentence = "".join(_user_sentences.get(user_id, []))
-        return current_sentence, confidence, True, timestamp
+        # EMIT: Return only the newly added sign (not accumulated sentence)
+        # This ensures we emit each new sign once, not the full accumulated history
+        sign_to_emit = "Hi Welcome to Echosigns" if text.lower() == "a" else text
+        return sign_to_emit, confidence, True, timestamp
     else:
         # Not fully stable yet, but "display anyhow" if we have a decent guess
         if confidence > 0.35:

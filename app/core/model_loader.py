@@ -6,6 +6,7 @@ from typing import Dict, Any
 import h5py
 import tempfile
 import shutil
+import zipfile
 
 # ------------------------------------------------------------------ #
 # Global model references — loaded once at server startup              #
@@ -17,7 +18,10 @@ label_map: Dict[int, str] = {}
 
 BASE_DIR       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR     = os.path.join(BASE_DIR, "models")
-KERAS_MODEL_PATH = os.path.join(MODELS_DIR, "lstm_model", "lstm_model.keras")
+# Prefer .h5 as it's more stable for metadata manipulation via h5py
+KERAS_MODEL_PATH_H5 = os.path.join(MODELS_DIR, "lstm_model", "lstm_model.h5")
+KERAS_MODEL_PATH_KERAS = os.path.join(MODELS_DIR, "lstm_model", "lstm_model.keras")
+KERAS_MODEL_PATH = KERAS_MODEL_PATH_H5 if os.path.exists(KERAS_MODEL_PATH_H5) else KERAS_MODEL_PATH_KERAS
 LABELS_PATH    = os.path.join(MODELS_DIR, "labels.json")
 
 
@@ -69,23 +73,40 @@ def load_models():
             print("[ML] Removing quantization_config from model file...")
             # Load model, remove quantization_config, save to temp file, then load
             def remove_quantization_from_keras(model_path):
-                """Remove quantization_config from .keras file"""
-                with h5py.File(model_path, 'r+') as f:
-                    if 'model_config' in f.attrs:
-                        config_str = f.attrs['model_config'].decode('utf-8') if isinstance(f.attrs['model_config'], bytes) else f.attrs['model_config']
-                        config = json.loads(config_str)
-                        
-                        def recursive_remove(obj):
-                            if isinstance(obj, dict):
-                                obj.pop('quantization_config', None)
-                                for v in obj.values():
-                                    recursive_remove(v)
-                            elif isinstance(obj, list):
-                                for item in obj:
-                                    recursive_remove(item)
-                        
-                        recursive_remove(config)
-                        f.attrs['model_config'] = json.dumps(config).encode('utf-8')
+                """Remove quantization_config from .keras (ZIP) or .h5 (HDF5) file"""
+                def recursive_remove(obj):
+                    if isinstance(obj, dict):
+                        obj.pop('quantization_config', None)
+                        for v in obj.values():
+                            recursive_remove(v)
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            recursive_remove(item)
+
+                if zipfile.is_zipfile(model_path):
+                    print(f"[ML] Detected ZIP archive (.keras format) at {model_path}")
+                    # Keras 3 format is a ZIP containing config.json
+                    tmp_zip = model_path + ".tmp.zip"
+                    with zipfile.ZipFile(model_path, 'r') as zin:
+                        with zipfile.ZipFile(tmp_zip, 'w') as zout:
+                            for item in zin.infolist():
+                                buffer = zin.read(item.filename)
+                                if item.filename == 'config.json':
+                                    config = json.loads(buffer.decode('utf-8'))
+                                    recursive_remove(config)
+                                    buffer = json.dumps(config).encode('utf-8')
+                                zout.writestr(item, buffer)
+                    shutil.move(tmp_zip, model_path)
+                else:
+                    print(f"[ML] Detected HDF5 format (.h5) at {model_path}")
+                    with h5py.File(model_path, 'r+') as f:
+                        if 'model_config' in f.attrs:
+                            config_str = f.attrs['model_config'].decode('utf-8') if isinstance(f.attrs['model_config'], bytes) else f.attrs['model_config']
+                            config = json.loads(config_str)
+                            recursive_remove(config)
+                            f.attrs['model_config'] = json.dumps(config).encode('utf-8')
+                        else:
+                            print("[ML] Warning: 'model_config' not found in HDF5 attributes")
             
             # Work on a temp copy to avoid corrupting original
             with tempfile.NamedTemporaryFile(delete=False, suffix='.keras') as tmp:
